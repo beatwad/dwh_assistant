@@ -1,0 +1,9 @@
+table_names:
+  - categories
+  - countries 
+  - merchants
+  - order_items
+  - orders
+  - products
+  - shipping_carriers
+  - users

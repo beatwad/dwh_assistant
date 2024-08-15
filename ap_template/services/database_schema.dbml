@@ -1,0 +1,71 @@
+Table categories {
+  id int
+  name varchar
+  parent_category_id int
+}
+Table countries {
+  id int
+  name varchar
+}
+Table merchants {
+  id int
+  country_code int
+  status varchar
+  merchant_name varchar
+  address text
+  website_url varchar
+  phone_number varchar
+  email varchar
+  logo_url varchar
+  created_at timestamp
+}
+Table order_items {
+  id int
+  order_id int
+  product_id int
+  quantity int
+  price double
+  sum double
+}
+Table orders {
+  id int
+  user_id int
+  status varchar
+  created_at timestamp
+  total_sum double
+  shipping_address text
+  billing_address text
+  payment_method varchar
+  payment_status varchar
+  shipping_carrier_id int
+}
+Table products {
+  id int
+  name varchar
+  description text
+  brand varchar
+  color varchar
+  weight double
+  dimensions varchar
+  rating int
+  merchant_id int
+  price int
+  created_at timestamp
+  category_id int
+}
+Table shipping_carriers {
+  id int
+  name varchar
+  tracking_url varchar
+}
+Table users {
+  id int
+  full_name varchar
+  email varchar
+  username varchar
+  phone_number varchar
+  last_login_at timestamp
+  avatar_url text
+  created_at timestamp
+  country_code int
+}
