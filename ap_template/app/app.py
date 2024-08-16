@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from services.database import execute_sql_query, load_dbml_schema
 from services.llm import natural_language_to_sql, prune_dialogue
 
+# TODO: translate russian phrases to english
 # TODO: store SQLAlchemy secret key in .env
 # TODO: add RAG
 # TODO: add dataset download function
