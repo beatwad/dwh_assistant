@@ -9,9 +9,14 @@ from dotenv import load_dotenv
 from services.database import execute_sql_query, load_dbml_schema
 from services.llm import natural_language_to_sql, prune_dialogue
 
+# TODO: store SQLAlchemy secret key in .env
+# TODO: add RAG
+# TODO: add dataset download function
+
 load_dotenv()
 
 assistant_app = Flask(__name__)
+
 assistant_app.config['SECRET_KEY'] = 'your_secret_key'
 assistant_app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'  # Update with your actual database URI
 
