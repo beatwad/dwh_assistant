@@ -67,8 +67,15 @@
     </style>    
 </head>
 <body>
+
     <div class="container">
-        <h2>DWH Assistant KarpovExpress</h2>
+        <h2>DWH Assistant</h2>
+        
+        <!-- Logout Button -->
+        <div style="text-align: right; margin-bottom: 10px;">
+            <a href="{{ url_for('logout') }}" class="btn btn-danger">Logout</a>
+        </div>
+
         <div id="chatbox"></div>
         <form id="queryForm">
             <div class="input-group mb-3">
@@ -116,12 +123,10 @@
             executeManualQuery.addEventListener('click', function() {
                 const manualQuery = manualQueryInput.value.trim();
                 if (!manualQuery) {
-                    alert('Пожалуйста, введите SQL запрос');
+                    alert('Please enter SQL query');
                     return;
                 }
-
                 addMessageToChat({content: manualQuery, isUser: true});
-
                 fetch('/', {
                     method: 'POST',
                     headers: {
@@ -139,9 +144,10 @@
                     }
                 })
                 .catch(error => {
-                    console.error('Ошибка:', error);
+                    console.error('Error:', error);
                 });
             });
+
         });
 
         function formatSqlForHtml(sqlText) {
@@ -152,7 +158,6 @@
             const chatbox = document.getElementById('chatbox');
             const messageDiv = document.createElement('div');
             messageDiv.classList.add('message', isUser ? 'user-message' : 'response-message');
-
             let avatar = isUser ? '/static/user_avatar.png' : '/static/assistant_avatar.png';
             let backgroundColor = isError ? 'background-color: #ffcccc;' : '';
             
@@ -169,28 +174,21 @@
             if (!userQuery) {
                 return;
             }
-
             const submitButton = document.getElementById('submitButton');
             submitButton.disabled = true;
-
             const cancelButton = document.getElementById('cancelButton');
             cancelButton.style.display = 'inline-block';
-
             const chatbox = document.getElementById('chatbox');
-
             addMessageToChat({content: userQuery, isUser: true});
-
             const spinnerDiv = document.createElement('div');
             spinnerDiv.classList.add('message', 'response-message');
             spinnerDiv.innerHTML = `<img src="/static/assistant_avatar.png" class="avatar"><div class="spinner"></div><div class="timer">0 сек</div>`;
             chatbox.appendChild(spinnerDiv);
-
             let seconds = 0;
             const timerInterval = setInterval(() => {
                 seconds++;
                 spinnerDiv.querySelector('.timer').textContent = `${seconds} сек`;
             }, 1000);
-
             const controller = new AbortController();
             const signal = controller.signal;
 
@@ -208,16 +206,16 @@
                 chatbox.removeChild(spinnerDiv);
                 submitButton.disabled = false;
                 cancelButton.style.display = 'none';
-
                 if (data.sql) {
                     const formattedSql = formatSqlForHtml(data.sql);
                     addMessageToChat({content: `SQL запрос:<br>${formattedSql}`, isUser: false});
                 }
-
                 if (data.result) {
                     addMessageToChat({content: data.result, isUser: false});
                 } else if (data.error) {
-                    let errorMessageContent = `Кажется что-то сломалось:<br>${data.error}`;
+                    let errorMessageContent = `It seems that something is broke
+                    
+                    :<br>${data.error}`;
                     if (data.rawResponse) {
                         errorMessageContent += `<br><br>Сырой ответ:<br>${data.rawResponse}`;
                     }
@@ -229,11 +227,10 @@
                 chatbox.removeChild(spinnerDiv);
                 submitButton.disabled = false;
                 cancelButton.style.display = 'none';
-
                 if (error.name === 'AbortError') {
                     console.log('Fetch aborted');
                     addMessageToChat({
-                        content: 'Операция прервана пользователем',
+                        content: 'Operation was interrupted by user',
                         isUser: false,
                         isError: true
                     });

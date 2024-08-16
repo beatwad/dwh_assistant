@@ -13,6 +13,8 @@ dbname = os.getenv("PG_DBNAME")
 user = os.getenv("PG_USER")
 password = os.getenv("PG_PASSWORD")
 prompt_path = os.getenv("PROMPT_PATH")
+max_dialogue_length = os.getenv("MAX_DIALOGUE_LENGTH")
+max_dialogue_length = int(max_dialogue_length)
 
 
 def generate_prompt(user_query: str, schema_data: str) -> Tuple[str, str]:
@@ -36,7 +38,7 @@ def generate_prompt(user_query: str, schema_data: str) -> Tuple[str, str]:
     system_prompt = "" # this variable is used for Yandex GPT
     
     prompt += f"Database schema in DBML format:\n\n {schema_data}"
-    prompt += f"User's request: {user_query}"
+    prompt += f"\n{user_query}"
 
     return system_prompt, prompt 
 
@@ -208,44 +210,20 @@ def yandex_gpt_query(user_query: str) -> Dict[str, str]:
     }
 
 
-def extract_sql_query_type_1(query: str) -> str:
-    """Take LLM answer (type 1) and extract SQL query from it."""
-    b = re.compile("```sql")
-    begin = b.search(query)
-    if begin:
-        begin = begin.span()[1]
-
-    e = re.compile("```")
-    end = [m.start() for m in e.finditer(query)]
-    if end:
-        end = end[-1]
+def extract_sql_query(query: str) -> str:
+    """Take LLM answer and extract SQL query from it."""
+    r = re.compile('```')
+    matches = [m.start() for m in r.finditer(query)]
+    
+    if len(matches) >= 2:
+        begin = matches[0] + 3
+        end = matches[-1]
     else:
-        end = None
+        begin = end = None
 
     if begin and end:
         query = query[begin:end]
-    else:
-        query = ""
-
-    return query
-
-
-def extract_sql_query_type_2(query: str) -> str:
-    """Take LLM answer (type 2) and extract SQL query from it."""
-    b = re.compile('"SELECT')
-    begin = b.search(query)
-    if begin:
-        begin = begin.span()[0] + 1
-
-    e = re.compile('"')
-    end = [m.start() for m in e.finditer(query)]
-    if end:
-        end = end[-1]
-    else:
-        end = None
-
-    if begin and end:
-        query = query[begin:end]
+        query = re.sub("sql", "", query)
     else:
         query = ""
 
@@ -295,8 +273,8 @@ def natural_language_to_sql(user_query: str, schema_data: str, model: str = "ope
             "raw_response": answer["answer"],
             }
     else:
-        sql_query = extract_sql_query_type_1(answer["answer"]) or \
-            extract_sql_query_type_2(answer["answer"])
+        
+        sql_query = extract_sql_query(answer["answer"])
 
         if not sql_query:
             status = "failure"
@@ -312,3 +290,40 @@ def natural_language_to_sql(user_query: str, schema_data: str, model: str = "ope
             }
 
     return result
+
+
+def prune_dialogue(dialogue: str) -> str:
+    """
+    If dialogue length is more than max context window size - 
+    prune it buy deleting the very first dialogues so
+    it can fit into the model context window
+    
+    Parameters
+    ----------
+    dialogue : str
+        Dialogue between user and LLM.
+
+    Returns
+    -------
+    str
+        Pruned dialogue between user and LLM.
+    """
+    if len(dialogue) <= max_dialogue_length:
+        return dialogue
+    
+    total_length = 0
+    pruned_dialogue = []
+
+    dialogue = dialogue.split("User's request: ")
+
+    for d in dialogue[::-1]:
+        if total_length + len(d) > max_dialogue_length:
+            break
+        else:
+            total_length += len(d)
+            pruned_dialogue.append(d)
+    
+    pruned_dialogue = pruned_dialogue[::-1]
+    pruned_dialogue = ("User's request: ").join(pruned_dialogue)
+        
+    return "User's request: " + pruned_dialogue
