@@ -79,21 +79,22 @@
         <div id="chatbox"></div>
         <form id="queryForm">
             <div class="input-group mb-3">
-                <input type="text" class="form-control" id="userQuery" name="user_query" placeholder="Введите ваш запрос" required>
+                <input type="text" class="form-control" id="userQuery" name="user_query" placeholder="Enter your query" required>
                 <div class="input-group-append">
                     <button id="cancelButton" class="btn btn-outline-secondary" type="button" style="display: none;">
                         <i class="fas fa-stop"></i>
                     </button>
-                    <button type="submit" id="submitButton" class="btn btn-primary">Отправить</button>
+                    <button type="submit" id="submitButton" class="btn btn-primary">Send</button>
                 </div>
             </div>
         </form>
         <div style="text-align: left;">
-            <button id="manualQueryToggle" class="btn btn-secondary mt-2">Ручной запрос</button>
+            <button id="manualQueryToggle" class="btn btn-secondary mt-2">Manual query</button>
+            <a href="{{ url_for('download_dataframe') }}" class="btn btn-success mt-2 ml-2" id="downloadButton" download>Download CSV</a>
         </div>
         <div id="manualQueryPanel" style="display: none;">
-            <textarea id="manualQueryInput" class="form-control mt-2" rows="3" placeholder="Введите SQL запрос"></textarea>
-            <button id="executeManualQuery" class="btn btn-primary mt-2">Выполнить запрос</button>
+            <textarea id="manualQueryInput" class="form-control mt-2" rows="3" placeholder="Enter SQL query"></textarea>
+            <button id="executeManualQuery" class="btn btn-primary mt-2">Execute query</button>
         </div>
     </div>
 
@@ -182,7 +183,7 @@
             addMessageToChat({content: userQuery, isUser: true});
             const spinnerDiv = document.createElement('div');
             spinnerDiv.classList.add('message', 'response-message');
-            spinnerDiv.innerHTML = `<img src="/static/assistant_avatar.png" class="avatar"><div class="spinner"></div><div class="timer">0 сек</div>`;
+            spinnerDiv.innerHTML = `<img src="/static/assistant_avatar.png" class="avatar"><div class="spinner"></div><div class="timer">0 sec</div>`;
             chatbox.appendChild(spinnerDiv);
             let seconds = 0;
             const timerInterval = setInterval(() => {
@@ -208,7 +209,7 @@
                 cancelButton.style.display = 'none';
                 if (data.sql) {
                     const formattedSql = formatSqlForHtml(data.sql);
-                    addMessageToChat({content: `SQL запрос:<br>${formattedSql}`, isUser: false});
+                    addMessageToChat({content: `SQL query:<br>${formattedSql}`, isUser: false});
                 }
                 if (data.result) {
                     addMessageToChat({content: data.result, isUser: false});
@@ -217,7 +218,7 @@
                     
                     :<br>${data.error}`;
                     if (data.rawResponse) {
-                        errorMessageContent += `<br><br>Сырой ответ:<br>${data.rawResponse}`;
+                        errorMessageContent += `<br><br>Raw answer:<br>${data.rawResponse}`;
                     }
                     addMessageToChat({content: errorMessageContent, isUser: false, isError: true});
                 }
@@ -235,7 +236,7 @@
                         isError: true
                     });
                 } else {
-                    console.error('Ошибка:', error);
+                    console.error('Error:', error);
                 }
                 chatbox.scrollTop = chatbox.scrollHeight;
             });

@@ -14,7 +14,8 @@ user = os.getenv("PG_USER")
 password = os.getenv("PG_PASSWORD")
 prompt_path = os.getenv("PROMPT_PATH")
 max_dialogue_length = os.getenv("MAX_DIALOGUE_LENGTH")
-max_dialogue_length = int(max_dialogue_length)
+if max_dialogue_length is not None:
+    max_dialogue_length = int(max_dialogue_length)
 
 
 def generate_prompt(user_query: str, schema_data: str) -> Tuple[str, str]:
