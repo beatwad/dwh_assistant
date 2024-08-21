@@ -6,6 +6,9 @@ import json
 import replicate
 import requests
 from openai import OpenAI
+from sentence_transformers import SentenceTransformer
+from sentence_transformers.util import pytorch_cos_sim
+
 
 host = os.getenv("PG_HOST")
 port = os.getenv("PG_PORT")
@@ -16,6 +19,34 @@ prompt_path = os.getenv("PROMPT_PATH")
 max_dialogue_length = os.getenv("MAX_DIALOGUE_LENGTH")
 if max_dialogue_length is not None:
     max_dialogue_length = int(max_dialogue_length)
+
+
+def init_sentence_encoder(model_name: str = 'google-bert/bert-base-multilingual-cased') -> SentenceTransformer:
+    """
+    Initialize a SentenceTransformer model for encoding sentences.
+
+    Parameters:
+        model_name (str): The name of the model to load. Default is 'google-bert/bert-base-multilingual-cased'.
+            Model names can be found at the Hugging Face model hub: https://huggingface.co/models
+
+    Returns:
+        SentenceTransformer: An initialized SentenceTransformer model.
+
+    Raises:
+        ValueError: If the model name is empty.
+        RuntimeError: If the model fails to load.
+    """
+    if not model_name:
+        raise ValueError("Model name is empty.")
+    try:
+        model = SentenceTransformer(model_name)
+    except:
+        raise RuntimeError("Model fails to load")
+    return model
+
+
+sentence_encoder = init_sentence_encoder()
+
 
 
 def generate_prompt(user_query: str, schema_data: str) -> Tuple[str, str]:

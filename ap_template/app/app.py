@@ -7,7 +7,6 @@ from wtforms import StringField, PasswordField, SubmitField
 from wtforms.validators import DataRequired, EqualTo, Length
 from werkzeug.security import generate_password_hash, check_password_hash
 from io import BytesIO
-import pandas as pd
 from dotenv import load_dotenv
 from services.database import execute_sql_query, load_dbml_schema
 from services.llm import natural_language_to_sql, prune_dialogue
