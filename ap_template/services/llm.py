@@ -5,9 +5,14 @@ import re
 import json
 import replicate
 import requests
+import chromadb
 from openai import OpenAI
-from sentence_transformers import SentenceTransformer
-from sentence_transformers.util import pytorch_cos_sim
+
+from llama_index.core import VectorStoreIndex, Document, Settings, StorageContext
+from llama_index.vector_stores.chroma import ChromaVectorStore
+from llama_index.embeddings.langchain.base import LangchainEmbedding
+from langchain_huggingface.embeddings.huggingface import HuggingFaceEmbeddings
+from llama_index.core.node_parser import SimpleNodeParser
 
 
 host = os.getenv("PG_HOST")
@@ -17,35 +22,100 @@ user = os.getenv("PG_USER")
 password = os.getenv("PG_PASSWORD")
 prompt_path = os.getenv("PROMPT_PATH")
 max_dialogue_length = os.getenv("MAX_DIALOGUE_LENGTH")
-if max_dialogue_length is not None:
-    max_dialogue_length = int(max_dialogue_length)
+# if max_dialogue_length is not None:
+#     max_dialogue_length = int(max_dialogue_length)
 
+# TODO: store all parameters in .env
+# TODO: update answers of RAG if they are older that 30 days
 
-def init_sentence_encoder(model_name: str = 'google-bert/bert-base-multilingual-cased') -> SentenceTransformer:
+def init_vector_storage_retriever(
+        model_name: str = 'google-bert/bert-base-multilingual-cased',
+        top_k = 1,
+        ) -> VectorStoreIndex:
     """
-    Initialize a SentenceTransformer model for encoding sentences.
+    Initialize a retriever model for finding the most relevant answer to query in vector database.
 
     Parameters:
         model_name (str): The name of the model to load. Default is 'google-bert/bert-base-multilingual-cased'.
             Model names can be found at the Hugging Face model hub: https://huggingface.co/models
 
     Returns:
-        SentenceTransformer: An initialized SentenceTransformer model.
+        VectorStoreIndex: retriever for vector database.
 
     Raises:
         ValueError: If the model name is empty.
         RuntimeError: If the model fails to load.
     """
-    if not model_name:
-        raise ValueError("Model name is empty.")
-    try:
-        model = SentenceTransformer(model_name)
-    except:
-        raise RuntimeError("Model fails to load")
-    return model
+
+    # Initialize BERT embedding model
+    bert_embedding_model = HuggingFaceEmbeddings(
+        model_name=model_name,
+    )
+
+    # Wrap BERT embedding model in LangchainEmbedding to use in LLamaIndex
+    embedding = LangchainEmbedding(bert_embedding_model)
+
+    # Create a service context with the embedding model
+    # service_context = ServiceContext.from_defaults(llm=None, embed_model=embedding)
+    Settings.llm = None
+    Settings.embed_model = embedding
+
+    # initialize chromadb client
+    db = chromadb.PersistentClient(path="../data/chroma_db")
+
+    # get collection
+    chroma_collection = db.get_or_create_collection("quickstart")
+
+    # assign chroma as the vector_store to the context
+    vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+    storage_context = StorageContext.from_defaults(vector_store=vector_store)
+
+    # load your index from stored vectors
+    index = VectorStoreIndex.from_vector_store(
+        vector_store, 
+        storage_context=storage_context, 
+        embedding=embedding
+    )
+
+    retriever = index.as_retriever(similarity_top_k=top_k)
+
+    return retriever
 
 
-sentence_encoder = init_sentence_encoder()
+retriever = init_vector_storage_retriever(model_name="google/bert_uncased_L-2_H-128_A-2")
+
+
+def retrieve_most_relevant_answer(user_query: str, threshold: float = 0.8) -> Dict[str, str]:
+    """
+    Retrieve from vector database anwer to the most relevant question
+    
+    Parameters
+    ----------
+    user_query : str
+        The user's query in natural language.
+    threshold : float
+        The threshold of similarity: if similarity between user query
+        and the most similar query from vector database is 
+        more than a threshold - return its corresponding answer
+
+    Returns
+    -------
+    str: answer
+    """
+    nodes = retriever.retrieve(user_query)
+
+    if len(nodes) == 0 or nodes[0].score < threshold:
+        return {
+            "status": "success",
+            "answer": None,
+            "error": "",
+        } 
+    
+    return {
+        "status": "success",
+        "answer": nodes[0].metadata["answer"],
+        "error": "",
+    }
 
 
 
@@ -288,8 +358,12 @@ def natural_language_to_sql(user_query: str, schema_data: str, model: str = "ope
     
     _, prompt = generate_prompt(user_query, schema_data)
 
-    # get answer from model
-    if model == "openai":
+    # get answer from RAG or from model
+    retrieved_answer = retrieve_most_relevant_answer(user_query)
+    
+    if retrieved_answer["answer"] is not None:
+        answer = retrieved_answer
+    elif model == "openai":
         answer = openai_query(prompt)
     elif model == "replicate":
         answer = replicate_query(prompt)
@@ -305,8 +379,14 @@ def natural_language_to_sql(user_query: str, schema_data: str, model: str = "ope
             "raw_response": answer["answer"],
             }
     else:
-        
-        sql_query = extract_sql_query(answer["answer"])
+
+        # add user_query, sql_query pair to RAG if there is no similar enough query in it
+        if retrieved_answer["answer"] is None:
+            sql_query = extract_sql_query(answer["answer"])
+            document = Document(text=user_query, metadata={"answer": sql_query})
+            retriever.insert(document)
+        else:
+            sql_query = answer["answer"]
 
         if not sql_query:
             status = "failure"
