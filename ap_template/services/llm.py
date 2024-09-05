@@ -6,37 +6,45 @@ import json
 import replicate
 import requests
 import chromadb
+from dotenv import load_dotenv
 from openai import OpenAI
 
 from llama_index.core import VectorStoreIndex, Document, Settings, StorageContext
+from llama_index.core.evaluation import SemanticSimilarityEvaluator
 from llama_index.vector_stores.chroma import ChromaVectorStore
+from llama_index.core.embeddings import resolve_embed_model
 from llama_index.embeddings.langchain.base import LangchainEmbedding
 from langchain_huggingface.embeddings.huggingface import HuggingFaceEmbeddings
-from llama_index.core.node_parser import SimpleNodeParser
 
+load_dotenv()
 
-host = os.getenv("PG_HOST")
-port = os.getenv("PG_PORT")
-dbname = os.getenv("PG_DBNAME")
-user = os.getenv("PG_USER")
-password = os.getenv("PG_PASSWORD")
+service_start = os.getenv("SERVICE_START")
 prompt_path = os.getenv("PROMPT_PATH")
-max_dialogue_length = os.getenv("MAX_DIALOGUE_LENGTH")
-# if max_dialogue_length is not None:
-#     max_dialogue_length = int(max_dialogue_length)
+chromadb_path = os.getenv("CHROMADB_PATH")
 
-# TODO: store all parameters in .env
+max_dialogue_length = os.getenv("MAX_DIALOGUE_LENGTH")
+retrieval_threshold = os.getenv("RETRIEVAL_THRESH")
+top_k = os.getenv("TOP_K")
+
+max_dialogue_length = int(max_dialogue_length)
+retrieval_threshold = float(retrieval_threshold)
+top_k = int(top_k)
+
+# TODO: save in RAG only direct query from user, and compare it with another direct queries from user 
 # TODO: update answers of RAG if they are older that 30 days
+# TODO: use your Vector Database to add examples of query-sql_query to prompt
+# TODO: add tests
+# TODO: wrap code in docker container
 
 def init_vector_storage_retriever(
-        model_name: str = 'google-bert/bert-base-multilingual-cased',
+        model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
         top_k = 1,
-        ) -> VectorStoreIndex:
+        ) -> Tuple[VectorStoreIndex, SemanticSimilarityEvaluator]:
     """
     Initialize a retriever model for finding the most relevant answer to query in vector database.
 
     Parameters:
-        model_name (str): The name of the model to load. Default is 'google-bert/bert-base-multilingual-cased'.
+        model_name (str): The name of the model to load. Default is 'sentence-transformers/all-MiniLM-L6-v2'.
             Model names can be found at the Hugging Face model hub: https://huggingface.co/models
 
     Returns:
@@ -47,21 +55,16 @@ def init_vector_storage_retriever(
         RuntimeError: If the model fails to load.
     """
 
-    # Initialize BERT embedding model
-    bert_embedding_model = HuggingFaceEmbeddings(
-        model_name=model_name,
-    )
-
-    # Wrap BERT embedding model in LangchainEmbedding to use in LLamaIndex
-    embedding = LangchainEmbedding(bert_embedding_model)
+    # Initialize embedding model
+    embed_model = resolve_embed_model(f"local:{model_name}")
 
     # Create a service context with the embedding model
     # service_context = ServiceContext.from_defaults(llm=None, embed_model=embedding)
     Settings.llm = None
-    Settings.embed_model = embedding
+    Settings.embed_model = embed_model
 
     # initialize chromadb client
-    db = chromadb.PersistentClient(path="../data/chroma_db")
+    db = chromadb.PersistentClient(path=chromadb_path)
 
     # get collection
     chroma_collection = db.get_or_create_collection("quickstart")
@@ -74,15 +77,52 @@ def init_vector_storage_retriever(
     index = VectorStoreIndex.from_vector_store(
         vector_store, 
         storage_context=storage_context, 
-        embedding=embedding
+        embed_model=embed_model
     )
 
-    retriever = index.as_retriever(similarity_top_k=top_k)
+    evaluator = SemanticSimilarityEvaluator(
+        embed_model=embed_model,
+        similarity_threshold=retrieval_threshold,
+    )
 
-    return retriever
+    return index, evaluator
 
 
-retriever = init_vector_storage_retriever(model_name="google/bert_uncased_L-2_H-128_A-2")
+# get vector index and retriever for RAG
+index, evaluator = init_vector_storage_retriever(model_name="sentence-transformers/all-MiniLM-L6-v2", top_k=1)
+retriever = index.as_retriever(similarity_top_k=1)
+
+
+# user_query = "Выведи все страны и количество клиентов в каждой из них "
+# sql_query = ""
+# document = Document(text=user_query, metadata={"answer": sql_query})
+# index.insert(document)
+# nodes = retriever.retrieve(user_query)
+
+# for node in nodes:
+#     print(node.id_)
+#     print(node.text)
+#     print(node.score)
+
+# query_embedding = index._embed_model.get_query_embedding(user_query)
+# document_embedding = index._embed_model.get_query_embedding(nodes[0].text)
+
+# from llama_index.core.evaluation import SemanticSimilarityEvaluator
+
+# # Initialize BERT embedding model
+# embed_model = resolve_embed_model("local:sentence-transformers/all-MiniLM-L6-v2")
+
+# evaluator = SemanticSimilarityEvaluator(
+#     embed_model=embed_model,
+#     similarity_threshold=0.8,
+# )
+
+# result = evaluator.evaluate(
+#     response=nodes[0].text,
+#     reference=user_query,
+# )
+
+# print(result.score)
 
 
 def retrieve_most_relevant_answer(user_query: str, threshold: float = 0.8) -> Dict[str, str]:
@@ -103,8 +143,17 @@ def retrieve_most_relevant_answer(user_query: str, threshold: float = 0.8) -> Di
     str: answer
     """
     nodes = retriever.retrieve(user_query)
-
-    if len(nodes) == 0 or nodes[0].score < threshold:
+    
+    if len(nodes) > 0:
+        result = evaluator.evaluate(
+            response=nodes[0].text,
+            reference=user_query,
+        )
+        passing = result.passing
+    else:
+        passing = True
+    
+    if len(nodes) == 0 or not passing:
         return {
             "status": "success",
             "answer": None,
@@ -116,7 +165,6 @@ def retrieve_most_relevant_answer(user_query: str, threshold: float = 0.8) -> Di
         "answer": nodes[0].metadata["answer"],
         "error": "",
     }
-
 
 
 def generate_prompt(user_query: str, schema_data: str) -> Tuple[str, str]:
@@ -359,7 +407,7 @@ def natural_language_to_sql(user_query: str, schema_data: str, model: str = "ope
     _, prompt = generate_prompt(user_query, schema_data)
 
     # get answer from RAG or from model
-    retrieved_answer = retrieve_most_relevant_answer(user_query)
+    retrieved_answer = retrieve_most_relevant_answer(user_query, retrieval_threshold)
     
     if retrieved_answer["answer"] is not None:
         answer = retrieved_answer
@@ -383,8 +431,9 @@ def natural_language_to_sql(user_query: str, schema_data: str, model: str = "ope
         # add user_query, sql_query pair to RAG if there is no similar enough query in it
         if retrieved_answer["answer"] is None:
             sql_query = extract_sql_query(answer["answer"])
-            document = Document(text=user_query, metadata={"answer": sql_query})
-            retriever.insert(document)
+            if sql_query:
+                document = Document(text=user_query, metadata={"answer": sql_query})
+                index.insert(document)
         else:
             sql_query = answer["answer"]
 

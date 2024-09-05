@@ -8,10 +8,9 @@ from wtforms.validators import DataRequired, EqualTo, Length
 from werkzeug.security import generate_password_hash, check_password_hash
 from io import BytesIO
 from dotenv import load_dotenv
-from services.database import execute_sql_query, load_dbml_schema
 from services.llm import natural_language_to_sql, prune_dialogue
+from services.database import execute_sql_query, load_dbml_schema
 
-load_dotenv()
 
 assistant_app = Flask(__name__)
 
@@ -127,7 +126,8 @@ def handle_form_request():
     user_query = request.form.get("user_query")
     if user_query:
         # add previous dialogue to prompt
-        user_query = dialogue.get(current_user.id, "") + "User's request: " + user_query + "\n"
+        query_history = dialogue.get(current_user.id, "")
+        user_query =  "User's request: " + user_query + "\n"
         return process_natural_language_query(user_query)
     return jsonify({"error": "No user query provided"}), 400
 
