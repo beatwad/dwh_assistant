@@ -1,0 +1,22 @@
+database:
+  pg_host: "127.0.0.1"
+  pg_port: 5432
+  pg_dbname: "orders_db"
+  pg_user: "postgres"
+  pg_password: "qwerty"
+
+prompt_params:
+  prompt_path: "services/prompt.txt"
+  table_names_path: "services/table_names.yaml"
+  database_schema_path: "services/database_schema.dbml"
+  # 16K tokens GPT-3.5 context window * ~0.75 word per token + need space for database schema
+  max_dialogue_length : 8000
+
+rag_params:
+  chromadb_path: "data/chroma_db"
+  retrieval_thresh: 0.8
+  top_k: 1
+
+llm_params:
+  # openai, replicate or yandex_gpt
+  model: "openai"

@@ -7,15 +7,19 @@ from wtforms import StringField, PasswordField, SubmitField
 from wtforms.validators import DataRequired, EqualTo, Length
 from werkzeug.security import generate_password_hash, check_password_hash
 from io import BytesIO
-from dotenv import load_dotenv
 from services.llm import natural_language_to_sql, prune_dialogue
 from services.database import execute_sql_query, load_dbml_schema
 
+from config.load_config import load_config
+
+config_dict = load_config()
 
 assistant_app = Flask(__name__)
 
 assistant_app.config['SECRET_KEY'] = os.getenv("SQLAL_SECRET_KEY")
-assistant_app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+
+db_path = os.path.join(os.getcwd(), 'data', 'instance', 'users.db')
+assistant_app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 
 db = SQLAlchemy(assistant_app)
 login_manager = LoginManager(assistant_app)
@@ -126,9 +130,8 @@ def handle_form_request():
     user_query = request.form.get("user_query")
     if user_query:
         # add previous dialogue to prompt
-        query_history = dialogue.get(current_user.id, "")
-        user_query =  "User's request: " + user_query + "\n"
-        return process_natural_language_query(user_query)
+        query_history =  "User's request: " + user_query + "\n" + dialogue.get(current_user.id, "")
+        return process_natural_language_query(user_query, query_history)
     return jsonify({"error": "No user query provided"}), 400
 
 def process_query(query):
@@ -145,15 +148,15 @@ def process_query(query):
     except Exception as e:
         return jsonify({"error": f"There was an error during query execution: {str(e)}"})
 
-def process_natural_language_query(user_query):
+def process_natural_language_query(user_query: str, query_history: str):
     dbml_schema = load_dbml_schema()
-    llm_answer = natural_language_to_sql(user_query, dbml_schema)
+    llm_answer = natural_language_to_sql(user_query, query_history, dbml_schema)
     
     # store dialog history for the current user
     if llm_answer["status"] == "success":
-        dialogue[current_user.id] = user_query + llm_answer["raw_response"] + "\n"
+        dialogue[current_user.id] = query_history + llm_answer["raw_response"] + "\n"
         # prune dialogue by deleting the very first conversations, so the overall
-        # prompt can
+        # prompt can fit in LLM's context window
         dialogue[current_user.id] = prune_dialogue(dialogue[current_user.id])
         return process_query(llm_answer["sql"])
     return jsonify(

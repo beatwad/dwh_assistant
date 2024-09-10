@@ -3,15 +3,18 @@ import psycopg2
 from psycopg2.extras import execute_values
 from faker import Faker
 import random
-from dotenv import load_dotenv
 
-load_dotenv()
 
-host = os.getenv("PG_HOST")
-port = os.getenv("PG_PORT")
-dbname = os.getenv("PG_DBNAME")
-user = os.getenv("PG_USER")
-password = os.getenv("PG_PASSWORD")
+from ap_template.config.load_config import load_config
+
+config_dict = load_config()
+
+pg_config = config_dict["database"]
+host = pg_config["pg_host"]
+port = pg_config["pg_host"]
+dbname = pg_config["pg_dbname"]
+user = pg_config["pg_user"]
+password = pg_config["pg_host"]
 
 print(host, port, dbname, user)
 

@@ -6,7 +6,6 @@ import json
 import replicate
 import requests
 import chromadb
-from dotenv import load_dotenv
 from openai import OpenAI
 
 from llama_index.core import VectorStoreIndex, Document, Settings, StorageContext
@@ -16,21 +15,23 @@ from llama_index.core.embeddings import resolve_embed_model
 from llama_index.embeddings.langchain.base import LangchainEmbedding
 from langchain_huggingface.embeddings.huggingface import HuggingFaceEmbeddings
 
-load_dotenv()
+from config.load_config import load_config
 
-service_start = os.getenv("SERVICE_START")
-prompt_path = os.getenv("PROMPT_PATH")
-chromadb_path = os.getenv("CHROMADB_PATH")
 
-max_dialogue_length = os.getenv("MAX_DIALOGUE_LENGTH")
-retrieval_threshold = os.getenv("RETRIEVAL_THRESH")
-top_k = os.getenv("TOP_K")
+config_dict = load_config()
 
-max_dialogue_length = int(max_dialogue_length)
-retrieval_threshold = float(retrieval_threshold)
-top_k = int(top_k)
+prompt_config = config_dict["prompt_params"]
+prompt_path = prompt_config["prompt_path"]
+max_dialogue_length = prompt_config["max_dialogue_length"]
 
-# TODO: save in RAG only direct query from user, and compare it with another direct queries from user 
+rag_config = config_dict["rag_params"]
+chromadb_path = rag_config["chromadb_path"]
+retrieval_threshold = rag_config["retrieval_thresh"]
+top_k = rag_config["top_k"]
+
+
+# TODO: save to RAG only direct query from user, and compare it with another direct queries from user
+# TODO: don't forget about model type in natural_language_to_sql function
 # TODO: update answers of RAG if they are older that 30 days
 # TODO: use your Vector Database to add examples of query-sql_query to prompt
 # TODO: add tests
@@ -380,7 +381,8 @@ def extract_sql_query(query: str) -> str:
     return query
 
 
-def natural_language_to_sql(user_query: str, schema_data: str, model: str = "openai") -> Dict[str, str]:
+def natural_language_to_sql(user_query: str, query_history: str, 
+                            schema_data: str, model: str = "openai") -> Dict[str, str]:
     """
     Converts a user query from natural language into an SQL query using LLM.
 
@@ -404,7 +406,7 @@ def natural_language_to_sql(user_query: str, schema_data: str, model: str = "ope
     if model not in ["openai", "replicate", "yandex_gpt"]:
         raise ValueError("model value must be 'openai', 'replicate' or 'yandex_gpt'")
     
-    _, prompt = generate_prompt(user_query, schema_data)
+    _, prompt = generate_prompt(query_history, schema_data)
 
     # get answer from RAG or from model
     retrieved_answer = retrieve_most_relevant_answer(user_query, retrieval_threshold)

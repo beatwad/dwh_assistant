@@ -5,14 +5,20 @@ import yaml
 import pandas as pd
 import psycopg2
 
-host = os.getenv("PG_HOST")
-port = os.getenv("PG_PORT")
-dbname = os.getenv("PG_DBNAME")
-user = os.getenv("PG_USER")
-password = os.getenv("PG_PASSWORD")
+from config.load_config import load_config
 
-table_names_path = os.getenv("TABLE_NAMES_PATH")
-dbml_schema_path = os.getenv("DATABASE_SCHEMA_PATH")
+config_dict = load_config()
+
+pg_config = config_dict["database"]
+host = pg_config["pg_host"]
+port = pg_config["pg_port"]
+dbname = pg_config["pg_dbname"]
+user = pg_config["pg_user"]
+password = pg_config["pg_password"]
+
+prompt_config = config_dict["prompt_params"]
+table_names_path = prompt_config["table_names_path"]
+dbml_schema_path = prompt_config["database_schema_path"]
 
 
 def execute_sql_query(sql_query: str) -> Dict[str, Union[str, None]]:
