@@ -15,7 +15,7 @@ prompt_params:
 rag_params:
   chromadb_path: "data/chroma_db"
   retrieval_thresh: 0.8
-  top_k: 1
+  top_k: 2
 
 llm_params:
   # openai, replicate or yandex_gpt

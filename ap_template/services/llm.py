@@ -9,11 +9,9 @@ import chromadb
 from openai import OpenAI
 
 from llama_index.core import VectorStoreIndex, Document, Settings, StorageContext
+from llama_index.core.retrievers import VectorIndexRetriever
 from llama_index.core.evaluation import SemanticSimilarityEvaluator
 from llama_index.vector_stores.chroma import ChromaVectorStore
-from llama_index.core.embeddings import resolve_embed_model
-from llama_index.embeddings.langchain.base import LangchainEmbedding
-from langchain_huggingface.embeddings.huggingface import HuggingFaceEmbeddings
 
 from config.load_config import load_config
 
@@ -30,8 +28,6 @@ retrieval_threshold = rag_config["retrieval_thresh"]
 top_k = rag_config["top_k"]
 
 
-# TODO: save to RAG only direct query from user, and compare it with another direct queries from user
-# TODO: don't forget about model type in natural_language_to_sql function
 # TODO: update answers of RAG if they are older that 30 days
 # TODO: use your Vector Database to add examples of query-sql_query to prompt
 # TODO: add tests
@@ -39,8 +35,8 @@ top_k = rag_config["top_k"]
 
 def init_vector_storage_retriever(
         model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-        top_k = 1,
-        ) -> Tuple[VectorStoreIndex, SemanticSimilarityEvaluator]:
+        top_k: int = 1
+        ) -> Tuple[VectorStoreIndex, VectorIndexRetriever]:
     """
     Initialize a retriever model for finding the most relevant answer to query in vector database.
 
@@ -56,13 +52,8 @@ def init_vector_storage_retriever(
         RuntimeError: If the model fails to load.
     """
 
-    # Initialize embedding model
-    embed_model = resolve_embed_model(f"local:{model_name}")
-
-    # Create a service context with the embedding model
-    # service_context = ServiceContext.from_defaults(llm=None, embed_model=embedding)
+    # Explicitely set LLM to None to prevent using OpenAI API key
     Settings.llm = None
-    Settings.embed_model = embed_model
 
     # initialize chromadb client
     db = chromadb.PersistentClient(path=chromadb_path)
@@ -78,55 +69,21 @@ def init_vector_storage_retriever(
     index = VectorStoreIndex.from_vector_store(
         vector_store, 
         storage_context=storage_context, 
-        embed_model=embed_model
+        embed_model=f"local:{model_name}"
     )
 
-    evaluator = SemanticSimilarityEvaluator(
-        embed_model=embed_model,
-        similarity_threshold=retrieval_threshold,
-    )
+    retriever = VectorIndexRetriever(index=index, similarity_top_k=top_k, use_metadata=False)
 
-    return index, evaluator
+    return index, retriever
 
 
 # get vector index and retriever for RAG
-index, evaluator = init_vector_storage_retriever(model_name="sentence-transformers/all-MiniLM-L6-v2", top_k=1)
-retriever = index.as_retriever(similarity_top_k=1)
+index, retriever = init_vector_storage_retriever(model_name="sentence-transformers/all-MiniLM-L6-v2", top_k=top_k)
 
 
-# user_query = "Выведи все страны и количество клиентов в каждой из них "
-# sql_query = ""
-# document = Document(text=user_query, metadata={"answer": sql_query})
-# index.insert(document)
-# nodes = retriever.retrieve(user_query)
 
-# for node in nodes:
-#     print(node.id_)
-#     print(node.text)
-#     print(node.score)
-
-# query_embedding = index._embed_model.get_query_embedding(user_query)
-# document_embedding = index._embed_model.get_query_embedding(nodes[0].text)
-
-# from llama_index.core.evaluation import SemanticSimilarityEvaluator
-
-# # Initialize BERT embedding model
-# embed_model = resolve_embed_model("local:sentence-transformers/all-MiniLM-L6-v2")
-
-# evaluator = SemanticSimilarityEvaluator(
-#     embed_model=embed_model,
-#     similarity_threshold=0.8,
-# )
-
-# result = evaluator.evaluate(
-#     response=nodes[0].text,
-#     reference=user_query,
-# )
-
-# print(result.score)
-
-
-def retrieve_most_relevant_answer(user_query: str, threshold: float = 0.8) -> Dict[str, str]:
+def retrieve_most_relevant_answer(user_query: str, 
+                                  retrieval_threshold=retrieval_threshold) -> Dict[str, str]:
     """
     Retrieve from vector database anwer to the most relevant question
     
@@ -145,28 +102,19 @@ def retrieve_most_relevant_answer(user_query: str, threshold: float = 0.8) -> Di
     """
     nodes = retriever.retrieve(user_query)
     
-    if len(nodes) > 0:
-        result = evaluator.evaluate(
-            response=nodes[0].text,
-            reference=user_query,
-        )
-        passing = result.passing
-    else:
-        passing = True
-    
-    if len(nodes) == 0 or not passing:
+    if len(nodes) > 0 and nodes[0].score >= retrieval_threshold:
         return {
-            "status": "success",
-            "answer": None,
-            "error": "",
-        } 
+                "status": "success",
+                "answer": nodes[0].metadata["answer"],
+                "error": "",
+            }
     
     return {
         "status": "success",
-        "answer": nodes[0].metadata["answer"],
+        "answer": None,
         "error": "",
-    }
-
+    } 
+    
 
 def generate_prompt(user_query: str, schema_data: str) -> Tuple[str, str]:
     """
@@ -409,7 +357,7 @@ def natural_language_to_sql(user_query: str, query_history: str,
     _, prompt = generate_prompt(query_history, schema_data)
 
     # get answer from RAG or from model
-    retrieved_answer = retrieve_most_relevant_answer(user_query, retrieval_threshold)
+    retrieved_answer = retrieve_most_relevant_answer(user_query)
     
     if retrieved_answer["answer"] is not None:
         answer = retrieved_answer
@@ -433,9 +381,6 @@ def natural_language_to_sql(user_query: str, query_history: str,
         # add user_query, sql_query pair to RAG if there is no similar enough query in it
         if retrieved_answer["answer"] is None:
             sql_query = extract_sql_query(answer["answer"])
-            if sql_query:
-                document = Document(text=user_query, metadata={"answer": sql_query})
-                index.insert(document)
         else:
             sql_query = answer["answer"]
 
@@ -453,6 +398,13 @@ def natural_language_to_sql(user_query: str, query_history: str,
             }
 
     return result
+
+
+def add_new_query_to_rag(user_query: str, sql_query: str) -> None:
+    """If new query is correct - add it to RAG"""
+    document = Document(text=user_query, metadata={"answer": sql_query})
+    document.excluded_embed_metadata_keys = ["answer"]
+    index.insert(document)
 
 
 def prune_dialogue(dialogue: str) -> str:

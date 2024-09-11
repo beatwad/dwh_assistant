@@ -1,6 +1,5 @@
 from typing import Union, Dict
 
-import os
 import yaml
 import pandas as pd
 import psycopg2

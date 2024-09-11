@@ -7,12 +7,13 @@ from wtforms import StringField, PasswordField, SubmitField
 from wtforms.validators import DataRequired, EqualTo, Length
 from werkzeug.security import generate_password_hash, check_password_hash
 from io import BytesIO
-from services.llm import natural_language_to_sql, prune_dialogue
+from services.llm import natural_language_to_sql, prune_dialogue, add_new_query_to_rag
 from services.database import execute_sql_query, load_dbml_schema
 
 from config.load_config import load_config
 
 config_dict = load_config()
+llm_model = config_dict["llm_params"]["model"]
 
 assistant_app = Flask(__name__)
 
@@ -134,11 +135,14 @@ def handle_form_request():
         return process_natural_language_query(user_query, query_history)
     return jsonify({"error": "No user query provided"}), 400
 
-def process_query(query):
+def process_query(query, user_query=None):
     try:
         ch_answer = execute_sql_query(query)
         if ch_answer["error"]:
             return jsonify({"error": str(ch_answer["error"])})
+        # if query is correct - add it to RAG
+        if user_query:
+            add_new_query_to_rag(user_query, query)
         df = ch_answer["result"].head(10)
         # save the last query result to dataframes storage
         dataframes[current_user.id] = df
@@ -150,7 +154,7 @@ def process_query(query):
 
 def process_natural_language_query(user_query: str, query_history: str):
     dbml_schema = load_dbml_schema()
-    llm_answer = natural_language_to_sql(user_query, query_history, dbml_schema)
+    llm_answer = natural_language_to_sql(user_query, query_history, dbml_schema, llm_model)
     
     # store dialog history for the current user
     if llm_answer["status"] == "success":
@@ -158,7 +162,7 @@ def process_natural_language_query(user_query: str, query_history: str):
         # prune dialogue by deleting the very first conversations, so the overall
         # prompt can fit in LLM's context window
         dialogue[current_user.id] = prune_dialogue(dialogue[current_user.id])
-        return process_query(llm_answer["sql"])
+        return process_query(llm_answer["sql"], user_query=user_query)
     return jsonify(
         {
             "error": llm_answer["error_description"],
