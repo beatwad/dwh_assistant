@@ -16,6 +16,7 @@ rag_params:
   chromadb_path: "data/chroma_db"
   retrieval_thresh: 0.8
   top_k: 2
+  query_timeout_days: 7 
 
 llm_params:
   # openai, replicate or yandex_gpt

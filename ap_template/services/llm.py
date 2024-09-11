@@ -6,11 +6,13 @@ import json
 import replicate
 import requests
 import chromadb
+
+from datetime import datetime
+
 from openai import OpenAI
 
 from llama_index.core import VectorStoreIndex, Document, Settings, StorageContext
 from llama_index.core.retrievers import VectorIndexRetriever
-from llama_index.core.evaluation import SemanticSimilarityEvaluator
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 from config.load_config import load_config
@@ -19,19 +21,24 @@ from config.load_config import load_config
 config_dict = load_config()
 
 prompt_config = config_dict["prompt_params"]
+# path to LLM prompt
 prompt_path = prompt_config["prompt_path"]
+# max length of previous dialogue between user and LLM that is used as prompt
 max_dialogue_length = prompt_config["max_dialogue_length"]
 
 rag_config = config_dict["rag_params"]
+# how many queries must be returned by retriever
+top_k = rag_config["top_k"] 
 chromadb_path = rag_config["chromadb_path"]
+# return query only if similarity score between query and the most similar node >= retrieval_thresh 
 retrieval_threshold = rag_config["retrieval_thresh"]
-top_k = rag_config["top_k"]
+# how many days query should be stored in RAG
+query_timeout = rag_config["query_timeout_days"] 
 
 
-# TODO: update answers of RAG if they are older that 30 days
 # TODO: use your Vector Database to add examples of query-sql_query to prompt
 # TODO: add tests
-# TODO: wrap code in docker container
+# TODO: wrap code in the Docker container
 
 def init_vector_storage_retriever(
         model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
@@ -103,11 +110,17 @@ def retrieve_most_relevant_answer(user_query: str,
     nodes = retriever.retrieve(user_query)
     
     if len(nodes) > 0 and nodes[0].score >= retrieval_threshold:
-        return {
-                "status": "success",
-                "answer": nodes[0].metadata["answer"],
-                "error": "",
-            }
+        dt_now = datetime.now()
+        query_time = nodes[0].metadata["time"]
+        query_time = datetime.strptime(query_time, "%Y-%m-%d %H:%M:%S.%f")
+        # return query from RAG only if it's not too old
+        # else try to update it with the latest LLM response
+        if (dt_now - query_time).seconds // 3600 <= query_timeout // 24:
+            return {
+                    "status": "success",
+                    "answer": nodes[0].metadata["answer"],
+                    "error": "",
+                }
     
     return {
         "status": "success",
@@ -402,8 +415,9 @@ def natural_language_to_sql(user_query: str, query_history: str,
 
 def add_new_query_to_rag(user_query: str, sql_query: str) -> None:
     """If new query is correct - add it to RAG"""
-    document = Document(text=user_query, metadata={"answer": sql_query})
-    document.excluded_embed_metadata_keys = ["answer"]
+    dt_now = str(datetime.now())
+    document = Document(text=user_query, metadata={"answer": sql_query, "time": dt_now})
+    document.excluded_embed_metadata_keys = ["answer", "time"]
     index.insert(document)
 
 
