@@ -37,7 +37,7 @@ retrieval_threshold = rag_config["retrieval_thresh"]
 query_timeout = rag_config["query_timeout_days"] 
 
 
-# TODO: add tests
+# TODO: write tests
 # TODO: wrap code in the Docker container
 
 def init_vector_storage_retriever(
@@ -117,7 +117,8 @@ def retrieve_most_relevant_answer(user_query: str,
         # if node with answer was not updated for too long and query text is similar enough to node text -
         # try to update it with the latest LLM response by deleting current node and inserting the new node
         # with fresh LLM response
-        if (dt_now - query_time).seconds // 3600 >= query_timeout * 24 and nodes[0].score >= 0.95:
+        
+        if (dt_now - query_time).total_seconds() // 3600 >= query_timeout * 24 and nodes[0].score >= 0.95:
             return {
                     "status": "success",
                     "answer": None,
