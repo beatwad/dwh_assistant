@@ -7,6 +7,7 @@ import replicate
 import requests
 import chromadb
 
+from random import sample
 from datetime import datetime
 
 from openai import OpenAI
@@ -36,7 +37,6 @@ retrieval_threshold = rag_config["retrieval_thresh"]
 query_timeout = rag_config["query_timeout_days"] 
 
 
-# TODO: use your Vector Database to add examples of query-sql_query to prompt
 # TODO: add tests
 # TODO: wrap code in the Docker container
 
@@ -113,19 +113,31 @@ def retrieve_most_relevant_answer(user_query: str,
         dt_now = datetime.now()
         query_time = nodes[0].metadata["time"]
         query_time = datetime.strptime(query_time, "%Y-%m-%d %H:%M:%S.%f")
-        # return query from RAG only if it's not too old
-        # else try to update it with the latest LLM response
-        if (dt_now - query_time).seconds // 3600 <= query_timeout // 24:
+            
+        # if node with answer was not updated for too long and query text is similar enough to node text -
+        # try to update it with the latest LLM response by deleting current node and inserting the new node
+        # with fresh LLM response
+        if (dt_now - query_time).seconds // 3600 >= query_timeout * 24 and nodes[0].score >= 0.95:
+            return {
+                    "status": "success",
+                    "answer": None,
+                    "error": "",
+                    "node_id": nodes[0].id_
+                }
+        # else just return query from RAG
+        else:
             return {
                     "status": "success",
                     "answer": nodes[0].metadata["answer"],
                     "error": "",
+                    "node_id": ""
                 }
     
     return {
         "status": "success",
         "answer": None,
         "error": "",
+        "node_id": ""
     } 
     
 
@@ -149,10 +161,35 @@ def generate_prompt(user_query: str, schema_data: str) -> Tuple[str, str]:
     
     system_prompt = "" # this variable is used for Yandex GPT
     
+    prompt += add_examples_from_rag()
+
     prompt += f"Database schema in DBML format:\n\n {schema_data}"
     prompt += f"\n{user_query}"
 
     return system_prompt, prompt 
+
+
+def add_examples_from_rag() -> str:
+    """Get three additional examples from RAG"""
+    additional_prompt = ""
+    
+    ids = index.storage_context.vector_store._get(limit=100, where={}).ids
+    
+    if len(ids) >= 3:
+        ids = sample(ids, 3)
+
+        i = 3
+
+        for id in ids:
+            node = index.storage_context.vector_store.get_nodes([id])[0]
+            query = node.text
+            answer = node.metadata["answer"]
+            additional_prompt += f'''\n{i}. User's request: "{query}"\n   SQL query:\n``` {answer} ```\n'''
+            i += 1
+
+    additional_prompt += "Database schema in DBML format:"
+
+    return additional_prompt
 
 
 def replicate_query(user_query: str) -> Dict[str, str]:
@@ -385,17 +422,20 @@ def natural_language_to_sql(user_query: str, query_history: str,
     if answer["error"]:
         result = {
             "status": "failure", 
-            "sql": "", 
+            "sql": "",
+            "is_rag": False,
+            "node_id": "",
             "error_description": answer["error"],
             "raw_response": answer["answer"],
             }
     else:
-
         # add user_query, sql_query pair to RAG if there is no similar enough query in it
         if retrieved_answer["answer"] is None:
             sql_query = extract_sql_query(answer["answer"])
+            is_rag = False
         else:
             sql_query = answer["answer"]
+            is_rag = True
 
         if not sql_query:
             status = "failure"
@@ -403,9 +443,12 @@ def natural_language_to_sql(user_query: str, query_history: str,
         else:
             status = "success"
             error_description = ""
+        
         result = {
             "status": status, 
-            "sql": sql_query, 
+            "sql": sql_query,
+            "is_rag": is_rag,
+            "node_id": retrieved_answer["node_id"],
             "error_description": error_description,
             "raw_response": answer["answer"],
             }
@@ -413,46 +456,11 @@ def natural_language_to_sql(user_query: str, query_history: str,
     return result
 
 
-def add_new_query_to_rag(user_query: str, sql_query: str) -> None:
+def add_new_query_to_rag(user_query: str, sql_query: str, node_id: str) -> None:
     """If new query is correct - add it to RAG"""
     dt_now = str(datetime.now())
     document = Document(text=user_query, metadata={"answer": sql_query, "time": dt_now})
     document.excluded_embed_metadata_keys = ["answer", "time"]
+    if node_id:
+        index.storage_context.vector_store.delete_nodes([node_id])
     index.insert(document)
-
-
-def prune_dialogue(dialogue: str) -> str:
-    """
-    If dialogue length is more than max context window size - 
-    prune it buy deleting the very first dialogues so
-    it can fit into the model context window
-    
-    Parameters
-    ----------
-    dialogue : str
-        Dialogue between user and LLM.
-
-    Returns
-    -------
-    str
-        Pruned dialogue between user and LLM.
-    """
-    if len(dialogue) <= max_dialogue_length:
-        return dialogue
-    
-    total_length = 0
-    pruned_dialogue = []
-
-    dialogue = dialogue.split("User's request: ")
-
-    for d in dialogue[::-1]:
-        if total_length + len(d) > max_dialogue_length:
-            break
-        else:
-            total_length += len(d)
-            pruned_dialogue.append(d)
-    
-    pruned_dialogue = pruned_dialogue[::-1]
-    pruned_dialogue = ("User's request: ").join(pruned_dialogue)
-        
-    return "User's request: " + pruned_dialogue

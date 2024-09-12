@@ -7,7 +7,7 @@ from wtforms import StringField, PasswordField, SubmitField
 from wtforms.validators import DataRequired, EqualTo, Length
 from werkzeug.security import generate_password_hash, check_password_hash
 from io import BytesIO
-from services.llm import natural_language_to_sql, prune_dialogue, add_new_query_to_rag
+from services.llm import natural_language_to_sql, add_new_query_to_rag
 from services.database import execute_sql_query, load_dbml_schema
 
 from config.load_config import load_config
@@ -26,7 +26,6 @@ db = SQLAlchemy(assistant_app)
 login_manager = LoginManager(assistant_app)
 login_manager.login_view = 'login'
 
-dialogue = {}
 dataframes = {}
 
 # User model
@@ -99,7 +98,6 @@ def home():
 @login_required
 def download_dataframe():
     user_id = current_user.id
-    print(dataframes)
     if user_id in dataframes:
         df = dataframes[user_id]
         output = BytesIO()
@@ -130,19 +128,18 @@ def handle_ajax_request():
 def handle_form_request():
     user_query = request.form.get("user_query")
     if user_query:
-        # add previous dialogue to prompt
-        query_history =  "User's request: " + user_query + "\n" + dialogue.get(current_user.id, "")
+        query_history =  "User's request: " + user_query
         return process_natural_language_query(user_query, query_history)
     return jsonify({"error": "No user query provided"}), 400
 
-def process_query(query, user_query=None):
+def process_query(query: str, user_query: str = None, is_rag: str = False, node_id: str = ""):
     try:
         ch_answer = execute_sql_query(query)
         if ch_answer["error"]:
             return jsonify({"error": str(ch_answer["error"])})
         # if query is correct - add it to RAG
-        if user_query:
-            add_new_query_to_rag(user_query, query)
+        if user_query and not is_rag :
+            add_new_query_to_rag(user_query, query, node_id)
         df = ch_answer["result"].head(10)
         # save the last query result to dataframes storage
         dataframes[current_user.id] = df
@@ -158,11 +155,9 @@ def process_natural_language_query(user_query: str, query_history: str):
     
     # store dialog history for the current user
     if llm_answer["status"] == "success":
-        dialogue[current_user.id] = query_history + llm_answer["raw_response"] + "\n"
-        # prune dialogue by deleting the very first conversations, so the overall
-        # prompt can fit in LLM's context window
-        dialogue[current_user.id] = prune_dialogue(dialogue[current_user.id])
-        return process_query(llm_answer["sql"], user_query=user_query)
+        node_id = llm_answer["node_id"]
+        is_rag = llm_answer["is_rag"]
+        return process_query(llm_answer["sql"], user_query=user_query, is_rag=is_rag, node_id=node_id)
     return jsonify(
         {
             "error": llm_answer["error_description"],
