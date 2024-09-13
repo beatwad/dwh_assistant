@@ -14,11 +14,12 @@ prompt_params:
 
 rag_params:
   chromadb_path: "data/chroma_db"
-  model_name: "sentence-transformers/all-MiniLM-L6-v2"
+  # Model names can be found at the Hugging Face model hub: https://huggingface.co/models
+  rag_model_name: "sentence-transformers/all-MiniLM-L6-v2"
   retrieval_thresh: 0.8
   top_k: 2
   query_timeout_days: 7 
 
 llm_params:
   # openai, replicate or yandex_gpt
-  model: "openai"
+  llm_model_name: "openai"

@@ -23,6 +23,7 @@ from config.load_config import load_config
 
 config_dict = load_config()
 prompt_config = config_dict["prompt_params"]
+llm_config = config_dict["llm_params"]
 rag_config = config_dict["rag_params"]
 
 
@@ -42,8 +43,11 @@ class LLM:
         self.retrieval_threshold = rag_config["retrieval_thresh"]
         # how many days query should be stored in RAG
         self.query_timeout = rag_config["query_timeout_days"]
-        self.model_name = rag_config["model_name"]
-
+        # The name of the model to load. Default is 'sentence-transformers/all-MiniLM-L6-v2'.
+        # Model names can be found at the Hugging Face model hub: https://huggingface.co/models
+        self.rag_model_name = rag_config["rag_model_name"]
+        # openai, replicate or yandex_gpt
+        self.llm_model_name = llm_config["llm_model_name"]
         # get vector index and retriever for RAG
         self.index, self.retriever = self.init_vector_storage_retriever()
 
@@ -53,10 +57,6 @@ class LLM:
             ) -> Tuple[VectorStoreIndex, VectorIndexRetriever]:
         """
         Initialize a retriever model for finding the most relevant answer to query in vector database.
-
-        Parameters:
-            model_name (str): The name of the model to load. Default is 'sentence-transformers/all-MiniLM-L6-v2'.
-                Model names can be found at the Hugging Face model hub: https://huggingface.co/models
 
         Returns:
             VectorStoreIndex: retriever for vector database.
@@ -83,9 +83,8 @@ class LLM:
         index = VectorStoreIndex.from_vector_store(
             vector_store, 
             storage_context=storage_context, 
-            embed_model=f"local:{self.model_name}"
-        )
-
+            embed_model=f"local:{self.rag_model_name}"
+        )   
         retriever = VectorIndexRetriever(index=index, similarity_top_k=self.top_k, use_metadata=False)
 
         return index, retriever
@@ -119,7 +118,6 @@ class LLM:
             # if node with answer was not updated for too long and query text is similar enough to node text -
             # try to update it with the latest LLM response by deleting current node and inserting the new node
             # with fresh LLM response
-            
             if (dt_now - query_time).total_seconds() // 3600 >= self.query_timeout * 24 and nodes[0].score >= 0.95:
                 return {
                         "status": "success",
@@ -424,7 +422,7 @@ class LLM:
         dict
             A dictionary with the processing result, including the SQL query or an error description if applicable.
         """
-        if self.model not in ["openai", "replicate", "yandex_gpt"]:
+        if self.llm_model_name not in ["openai", "replicate", "yandex_gpt"]:
             raise ValueError("model value must be 'openai', 'replicate' or 'yandex_gpt'")
         
         _, prompt = self.generate_prompt(query_history, schema_data)
@@ -434,9 +432,9 @@ class LLM:
         
         if retrieved_answer["answer"] is not None:
             answer = retrieved_answer
-        elif model == "openai":
+        elif self.llm_model_name == "openai":
             answer = self.openai_query(prompt)
-        elif model == "replicate":
+        elif self.llm_model_name == "replicate":
             answer = self.replicate_query(prompt)
         else:
             answer = self.yandex_gpt_query(prompt)

@@ -16,13 +16,14 @@ assistant_app.config['SECRET_KEY'] = os.getenv("SQLAL_SECRET_KEY")
 
 # init SQLAlchemy database
 db_path = os.path.join(os.getcwd(), 'data', 'instance', 'users.db')
-print(os.getcwd())
-print(db_path)
 assistant_app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 
 db = SQLAlchemy(assistant_app)
 login_manager = LoginManager(assistant_app)
 login_manager.login_view = 'login'
+
+with assistant_app.app_context():
+    db.create_all()
 
 # init class for interactions with LLM API and RAG
 llm_class = LLM()
@@ -168,7 +169,7 @@ def process_natural_language_query(user_query: str, query_history: str):
         }
     )
 
-if __name__ == "__main__":
-    with assistant_app.app_context():
-        db.create_all()
-    assistant_app.run(debug=True)
+# if __name__ == "__main__":
+#     with assistant_app.app_context():
+#         db.create_all()
+#     assistant_app.run(debug=True)
