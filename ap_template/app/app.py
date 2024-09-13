@@ -7,25 +7,27 @@ from wtforms import StringField, PasswordField, SubmitField
 from wtforms.validators import DataRequired, EqualTo, Length
 from werkzeug.security import generate_password_hash, check_password_hash
 from io import BytesIO
-from services.llm import natural_language_to_sql, add_new_query_to_rag
+from services.llm import LLM
 from services.database import execute_sql_query, load_dbml_schema
 
-from config.load_config import load_config
-
-config_dict = load_config()
-llm_model = config_dict["llm_params"]["model"]
-
+# init Flask app
 assistant_app = Flask(__name__)
-
 assistant_app.config['SECRET_KEY'] = os.getenv("SQLAL_SECRET_KEY")
 
+# init SQLAlchemy database
 db_path = os.path.join(os.getcwd(), 'data', 'instance', 'users.db')
+print(os.getcwd())
+print(db_path)
 assistant_app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 
 db = SQLAlchemy(assistant_app)
 login_manager = LoginManager(assistant_app)
 login_manager.login_view = 'login'
 
+# init class for interactions with LLM API and RAG
+llm_class = LLM()
+
+# dictionary for storing of dataframes of last user's queries
 dataframes = {}
 
 # User model
@@ -139,7 +141,7 @@ def process_query(query: str, user_query: str = None, is_rag: str = False, node_
             return jsonify({"error": str(ch_answer["error"])})
         # if query is correct - add it to RAG
         if user_query and not is_rag :
-            add_new_query_to_rag(user_query, query, node_id)
+            llm_class.add_new_query_to_rag(user_query, query, node_id)
         df = ch_answer["result"].head(10)
         # save the last query result to dataframes storage
         dataframes[current_user.id] = df
@@ -151,7 +153,7 @@ def process_query(query: str, user_query: str = None, is_rag: str = False, node_
 
 def process_natural_language_query(user_query: str, query_history: str):
     dbml_schema = load_dbml_schema()
-    llm_answer = natural_language_to_sql(user_query, query_history, dbml_schema, llm_model)
+    llm_answer = llm_class.natural_language_to_sql(user_query, query_history, dbml_schema)
     
     # store dialog history for the current user
     if llm_answer["status"] == "success":
