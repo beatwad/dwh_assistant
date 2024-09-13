@@ -168,8 +168,3 @@ def process_natural_language_query(user_query: str, query_history: str):
             "rawResponse": llm_answer.get("raw_response", "No raw response"),
         }
     )
-
-# if __name__ == "__main__":
-#     with assistant_app.app_context():
-#         db.create_all()
-#     assistant_app.run(debug=True)
