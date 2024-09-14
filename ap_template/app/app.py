@@ -22,9 +22,6 @@ db = SQLAlchemy(assistant_app)
 login_manager = LoginManager(assistant_app)
 login_manager.login_view = 'login'
 
-with assistant_app.app_context():
-    db.create_all()
-
 # init class for interactions with LLM API and RAG
 llm_class = LLM()
 
@@ -168,3 +165,6 @@ def process_natural_language_query(user_query: str, query_history: str):
             "rawResponse": llm_answer.get("raw_response", "No raw response"),
         }
     )
+
+with assistant_app.app_context():
+    db.create_all()
