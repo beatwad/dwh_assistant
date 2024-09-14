@@ -1,11 +1,9 @@
-import os
 import psycopg2
 from psycopg2.extras import execute_values
 from faker import Faker
 import random
 
-
-from ap_template.config.load_config import load_config
+from config.load_config import load_config
 
 config_dict = load_config()
 
@@ -15,8 +13,6 @@ port = pg_config["pg_host"]
 dbname = pg_config["pg_dbname"]
 user = pg_config["pg_user"]
 password = pg_config["pg_host"]
-
-print(host, port, dbname, user)
 
 # Connect to your PostgreSQL database
 conn = psycopg2.connect(

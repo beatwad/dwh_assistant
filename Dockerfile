@@ -11,4 +11,6 @@ WORKDIR /usr/src/app/ap_template
 
 EXPOSE 5000
 
+EXPOSE 5432
+
 CMD ["python", "run.py"]

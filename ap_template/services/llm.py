@@ -33,8 +33,6 @@ class LLM:
     def __init__(self):
         # path to LLM prompt
         self.prompt_path = prompt_config["prompt_path"]
-        # max length of previous dialogue between user and LLM that is used as prompt
-        self.max_dialogue_length = prompt_config["max_dialogue_length"]
         # how many queries must be returned by retriever
         self.top_k = rag_config["top_k"] 
         # path to ChromaDB database
