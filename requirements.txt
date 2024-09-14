@@ -16,4 +16,3 @@ llama-index==0.10.68
 chromadb==0.5.5
 llama-index-vector-stores-chroma==0.1.10
 llama-index-embeddings-huggingface==0.2.3
-Faker==0.7.4
