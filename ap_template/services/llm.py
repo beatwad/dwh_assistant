@@ -18,9 +18,6 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 
 from config.load_config import load_config
 
-# TODO: write tests
-# TODO: wrap code in the Docker container
-
 config_dict = load_config()
 prompt_config = config_dict["prompt_params"]
 llm_config = config_dict["llm_params"]

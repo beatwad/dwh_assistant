@@ -43,6 +43,6 @@ You can use data/create_db/create_order_db.py file to create test PostgreSQL dat
 
 ## Service start
 
-`docker run -p 5000:5000 -v ${PWD}/ap_template:/usr/src/app/ap_template dwh`
+`docker run --network="host" -p 5000:5000 -v ${PWD}/ap_template:/app/ap_template dwh`
 
 

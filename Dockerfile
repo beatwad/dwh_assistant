@@ -12,6 +12,5 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 WORKDIR /app/ap_template
 
 EXPOSE 5000
-EXPOSE 5432
 
 CMD ["python", "run.py"]

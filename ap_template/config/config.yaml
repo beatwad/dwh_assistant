@@ -4,7 +4,6 @@ database:
   pg_port: 5432
   pg_dbname: "orders_db"
   pg_user: "postgres"
-  pg_password: "qwerty"
 
 prompt_params:
   # path to LLM prompt

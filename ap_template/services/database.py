@@ -1,9 +1,11 @@
 from typing import Union, Dict
 
+import os
 import yaml
 import pandas as pd
 import psycopg2
 
+from dotenv import load_dotenv
 from config.load_config import load_config
 
 config_dict = load_config()
@@ -13,7 +15,9 @@ host = pg_config["pg_host"]
 port = pg_config["pg_port"]
 dbname = pg_config["pg_dbname"]
 user = pg_config["pg_user"]
-password = pg_config["pg_password"]
+
+load_dotenv()
+password = os.getenv("PG_PASSWORD")
 
 prompt_config = config_dict["prompt_params"]
 table_names_path = prompt_config["table_names_path"]
