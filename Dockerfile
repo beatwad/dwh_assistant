@@ -1,16 +1,17 @@
 FROM python:3.11-slim-bookworm
 
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+WORKDIR /app
 
-RUN mkdir -p /usr/src/app/
+COPY . /app
 
-COPY . /usr/src/app/
+RUN pip install --no-cache-dir -r requirements.txt && \
+    apt-get purge -y && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/* 
 
-WORKDIR /usr/src/app/ap_template
+WORKDIR /app/ap_template
 
 EXPOSE 5000
-
 EXPOSE 5432
 
 CMD ["python", "run.py"]
