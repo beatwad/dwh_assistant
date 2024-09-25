@@ -4,8 +4,13 @@ WORKDIR /app
 
 COPY . /app
 
-VOLUME /app/ap_template
+RUN pip install --no-cache-dir -r requirements.txt && \
+    apt-get purge -y && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/* 
 
-RUN pip install -r requirements.txt
+WORKDIR /app/ap_template
+
+EXPOSE 5000
 
 CMD ["python", "run.py"]

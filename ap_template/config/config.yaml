@@ -1,25 +1,32 @@
+# PostgresSQL database settings
 database:
   pg_host: "127.0.0.1"
   pg_port: 5432
   pg_dbname: "orders_db"
   pg_user: "postgres"
-  pg_password: "qwerty"
 
 prompt_params:
+  # path to LLM prompt
   prompt_path: "services/prompt.txt"
+  # path to file with the list of database table names
   table_names_path: "services/table_names.yaml"
+  # path to file with the database schema
   database_schema_path: "services/database_schema.dbml"
-  # 16K tokens GPT-3.5 context window * ~0.75 word per token + need space for database schema
-  max_dialogue_length : 8000
 
 rag_params:
   chromadb_path: "data/chroma_db"
   # Model names can be found at the Hugging Face model hub: https://huggingface.co/models
   rag_model_name: "sentence-transformers/all-MiniLM-L6-v2"
+  # how much must be similarity between user query and the most similar text in node from RAG
+  # to retrieve SQL query from RAG, not from LLM
   retrieval_thresh: 0.8
-  top_k: 2
+  # how many similar nodes to look for
+  top_k: 1
+  # period of time after which node in RAG must be updated in case user make similar
+  # request to the database - in that case request is sent to LLM instead of RAG and
+  # if LLM answer is correct, it's used to update node in RAG
   query_timeout_days: 7 
 
 llm_params:
-  # openai, replicate or yandex_gpt
+  # what LLM API to connect: openai, replicate or yandex_gpt
   llm_model_name: "openai"
