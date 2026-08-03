@@ -191,6 +191,10 @@ cython_debug/
 *.txt
 *.npy
 
+# databases
+ap_template/data/chroma_db/*.sqlite3
+ap_template/data/chroma_db/*/*.bin
+
 # models
 *.pkl
 *.h5

@@ -7,7 +7,6 @@ import replicate
 import requests
 import chromadb
 
-from random import sample
 from datetime import datetime
 
 from openai import OpenAI
@@ -81,6 +80,10 @@ class LLM:
             embed_model=f"local:{self.rag_model_name}"
         )   
         retriever = VectorIndexRetriever(index=index, similarity_top_k=self.top_k, use_metadata=False)
+
+        # separate retriever for few-shot examples: always fetch the 3 nodes
+        # nearest to the current query, independent of the answer-reuse top_k
+        self.example_retriever = VectorIndexRetriever(index=index, similarity_top_k=3, use_metadata=False)
 
         return index, retriever
 
@@ -156,8 +159,8 @@ class LLM:
             prompt = f.read()
         
         system_prompt = "" # this variable is used for Yandex GPT
-        
-        prompt += self.add_examples_from_rag()
+
+        prompt += self.add_examples_from_rag(user_query)
 
         prompt += f"Database schema in DBML format:\n\n {schema_data}"
         prompt += f"\n{user_query}"
@@ -165,31 +168,31 @@ class LLM:
         return system_prompt, prompt 
 
 
-    def add_examples_from_rag(self) -> str:
+    def add_examples_from_rag(self, user_query: str) -> str:
         """
-        Get three additional examples from RAG
-        
+        Get three examples most relevant to the user's query from RAG
+
+        Parameters
+        ----------
+        user_query : str
+            The user's query in natural language, used to find the
+            nearest examples in the vector database.
+
         Returns
         -------
         str
-            Additional prompt with three new examples of
-            succesful pairs user_query: sql_query
+            Additional prompt with up to three examples of
+            succesful pairs user_query: sql_query, ordered by
+            relevance to user_query
         """
         additional_prompt = ""
-        
-        ids = self.index.storage_context.vector_store._get(limit=100, where={}).ids
-        
-        if len(ids) >= 3:
-            ids = sample(ids, 3)
 
-            i = 3
+        nodes = self.example_retriever.retrieve(user_query)
 
-            for id in ids:
-                node = self.index.storage_context.vector_store.get_nodes([id])[0]
-                query = node.text
-                answer = node.metadata["answer"]
-                additional_prompt += f'''\n{i}. User's request: "{query}"\n   SQL query:\n``` {answer} ```\n'''
-                i += 1
+        for i, node in enumerate(nodes, start=3):
+            query = node.text
+            answer = node.metadata["answer"]
+            additional_prompt += f'''\n{i}. User's request: "{query}"\n   SQL query:\n``` {answer} ```\n'''
 
         additional_prompt += "Database schema in DBML format:"
 
